@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Visuomotor Prism Task</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: black;
+      font-family: Arial;
+      color: white;
+    }
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 10;
+    }
+  </style>
+</head>
+
+<body>
+<div id="info">Click to start</div>
+<canvas id="c"></canvas>
+
+<script>
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+const PRISM_SHIFT = 80; // change direction of visual field
+const TRIALS = 60;
+
+let trial = 0;
+let target = null;
+let startTime = 0;
+let data = [];
+let running = false;
+
+function newTrial() {
+    target = {
+        x: Math.random() * (canvas.width - 200) + 100,
+        y: Math.random() * (canvas.height - 200) + 100
+    };
+    startTime = performance.now();
+    draw();
+}
+
+function draw() {
+    ctx.fillStyle = "black";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // PRISM SHIFT (visual displacement)
+    ctx.fillStyle = "lime";
+    ctx.beginPath();
+    ctx.arc(target.x + PRISM_SHIFT, target.y, 12, 0, Math.PI * 2);
+    ctx.fill();
+
+    document.getElementById("info").innerText =
+        `Trial ${trial + 1}/${TRIALS}`;
+}
+
+canvas.addEventListener("click", (e) => {
+    if (!running) {
+        running = true;
+        newTrial();
+        return;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    const click = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+    };
+
+    let rt = performance.now() - startTime;
+
+    let error = Math.sqrt(
+        (click.x - target.x)**2 +
+        (click.y - target.y)**2
+    );
+
+    data.push({
+        trial,
+        target_x: target.x,
+        target_y: target.y,
+        click_x: click.x,
+        click_y: click.y,
+        rt,
+        error
+    });
+
+    // show touch point
+    ctx.fillStyle = "red";
+    ctx.beginPath();
+    ctx.arc(click.x, click.y, 8, 0, Math.PI * 2);
+    ctx.fill();
+
+    setTimeout(() => {
+        trial++;
+        if (trial < TRIALS) {
+            newTrial();
+        } else {
+            finish();
+        }
+    }, 300);
+});
+
+function finish() {
+    ctx.fillStyle = "white";
+    ctx.font = "30px Arial";
+    ctx.fillText("Done! Downloading data...", 50, 100);
+
+    let csv = "trial,target_x,target_y,click_x,click_y,rt,error\n";
+    data.forEach(d => {
+        csv += `${d.trial},${d.target_x},${d.target_y},${d.click_x},${d.click_y},${d.rt},${d.error}\n`;
+    });
+
+    let blob = new Blob([csv], {type: "text/csv"});
+    let url = URL.createObjectURL(blob);
+
+    let a = document.createElement("a");
+    a.href = url;
+    a.download = "visuomotor_data.csv";
+    a.click();
+}
+</script>
+
+</body>
+</html>
