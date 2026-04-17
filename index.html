@@ -1,27 +1,30 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>Visuomotor Prism Task</title>
-  <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-      background: black;
-      font-family: Arial;
-      color: white;
-    }
-    #info {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      z-index: 10;
-    }
-  </style>
+<meta charset="UTF-8">
+<title>Visuomotor Prism Task</title>
+<style>
+body {
+  margin: 0;
+  overflow: hidden;
+  background: black;
+  font-family: Arial;
+  color: white;
+}
+#info {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 10;
+}
+button {
+  margin-right: 10px;
+}
+</style>
 </head>
 
 <body>
-<div id="info">Click to start</div>
+<div id="info">Click to start experiment</div>
 <canvas id="c"></canvas>
 
 <script>
@@ -31,103 +34,200 @@ const ctx = canvas.getContext("2d");
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
-const PRISM_SHIFT = 80; // change direction of visual field
-const TRIALS = 60;
+/* =========================
+   EXPERIMENT SETTINGS
+========================= */
 
+const BLOCKS = [
+  {name:"baseline", trials:10, prism:[0,0]},
+  {name:"adaptation", trials:30, prism:[80,0]},
+  {name:"adaptation_cont", trials:20, prism:[80,0]},
+  {name:"aftereffect", trials:10, prism:[0,0]}
+];
+
+let blockIndex = 0;
 let trial = 0;
+let trial_in_block = 0;
+
 let target = null;
 let startTime = 0;
+
 let data = [];
+
+let prism_dx = 0;
+let prism_dy = 0;
+
+let time_pressure = false;
+let dual_task = false;
+
 let running = false;
 
+/* =========================
+   START TRIAL
+========================= */
+
 function newTrial() {
-    target = {
-        x: Math.random() * (canvas.width - 200) + 100,
-        y: Math.random() * (canvas.height - 200) + 100
-    };
-    startTime = performance.now();
-    draw();
+
+  let block = BLOCKS[blockIndex];
+
+  prism_dx = block.prism[0];
+  prism_dy = block.prism[1];
+
+  target = {
+    x: Math.random() * (canvas.width - 200) + 100,
+    y: Math.random() * (canvas.height - 200) + 100
+  };
+
+  startTime = performance.now();
+
+  draw(block.name);
 }
 
-function draw() {
-    ctx.fillStyle = "black";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+/* =========================
+   DRAW SCREEN
+========================= */
 
-    // PRISM SHIFT (visual displacement)
-    ctx.fillStyle = "lime";
-    ctx.beginPath();
-    ctx.arc(target.x + PRISM_SHIFT, target.y, 12, 0, Math.PI * 2);
-    ctx.fill();
+function draw(blockName) {
+  ctx.fillStyle = "black";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
 
-    document.getElementById("info").innerText =
-        `Trial ${trial + 1}/${TRIALS}`;
+  // visual (prism shifted) target
+  ctx.fillStyle = "lime";
+  ctx.beginPath();
+  ctx.arc(target.x + prism_dx, target.y + prism_dy, 12, 0, Math.PI*2);
+  ctx.fill();
+
+  document.getElementById("info").innerText =
+    `Block: ${blockName} | Trial ${trial_in_block+1}/${BLOCKS[blockIndex].trials}`;
 }
+
+/* =========================
+   CLICK / TOUCH RESPONSE
+========================= */
 
 canvas.addEventListener("click", (e) => {
-    if (!running) {
-        running = true;
-        newTrial();
+
+  if (!running) {
+    running = true;
+    newTrial();
+    return;
+  }
+
+  const rect = canvas.getBoundingClientRect();
+
+  let click = {
+    x: e.clientX - rect.left,
+    y: e.clientY - rect.top
+  };
+
+  let rt = performance.now() - startTime;
+
+  let error = Math.sqrt(
+    (click.x - target.x)**2 +
+    (click.y - target.y)**2
+  );
+
+  let timestamp_utc = new Date().toISOString();
+
+  let block = BLOCKS[blockIndex].name;
+
+  let disp_x = target.x + prism_dx;
+  let disp_y = target.y + prism_dy;
+
+  /* =========================
+     STORE DATA (FULL FORMAT)
+  ========================= */
+
+  data.push({
+    timestamp_utc: timestamp_utc,
+    trial: trial,
+    block: block,
+    trial_in_block: trial_in_block,
+
+    target_x: target.x,
+    target_y: target.y,
+
+    disp_target_x: disp_x,
+    disp_target_y: disp_y,
+
+    touch_x: click.x,
+    touch_y: click.y,
+
+    response_time_ms: rt,
+    error_px: error,
+
+    prism_dx: prism_dx,
+    prism_dy: prism_dy,
+
+    time_pressure: time_pressure,
+    dual_task: dual_task
+  });
+
+  /* =========================
+     VISUAL FEEDBACK
+  ========================= */
+
+  ctx.fillStyle = "red";
+  ctx.beginPath();
+  ctx.arc(click.x, click.y, 8, 0, Math.PI*2);
+  ctx.fill();
+
+  /* =========================
+     NEXT TRIAL LOGIC
+  ========================= */
+
+  setTimeout(() => {
+
+    trial++;
+    trial_in_block++;
+
+    let currentBlock = BLOCKS[blockIndex];
+
+    if (trial_in_block >= currentBlock.trials) {
+      blockIndex++;
+      trial_in_block = 0;
+
+      if (blockIndex >= BLOCKS.length) {
+        finish();
         return;
+      }
     }
 
-    const rect = canvas.getBoundingClientRect();
-    const click = {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top
-    };
+    newTrial();
 
-    let rt = performance.now() - startTime;
+  }, 300);
 
-    let error = Math.sqrt(
-        (click.x - target.x)**2 +
-        (click.y - target.y)**2
-    );
-
-    data.push({
-        trial,
-        target_x: target.x,
-        target_y: target.y,
-        click_x: click.x,
-        click_y: click.y,
-        rt,
-        error
-    });
-
-    // show touch point
-    ctx.fillStyle = "red";
-    ctx.beginPath();
-    ctx.arc(click.x, click.y, 8, 0, Math.PI * 2);
-    ctx.fill();
-
-    setTimeout(() => {
-        trial++;
-        if (trial < TRIALS) {
-            newTrial();
-        } else {
-            finish();
-        }
-    }, 300);
 });
 
+/* =========================
+   FINISH + DOWNLOAD CSV
+========================= */
+
 function finish() {
-    ctx.fillStyle = "white";
-    ctx.font = "30px Arial";
-    ctx.fillText("Done! Downloading data...", 50, 100);
 
-    let csv = "trial,target_x,target_y,click_x,click_y,rt,error\n";
-    data.forEach(d => {
-        csv += `${d.trial},${d.target_x},${d.target_y},${d.click_x},${d.click_y},${d.rt},${d.error}\n`;
-    });
+  ctx.fillStyle = "white";
+  ctx.font = "30px Arial";
+  ctx.fillText("Experiment Complete", 50, 100);
 
-    let blob = new Blob([csv], {type: "text/csv"});
-    let url = URL.createObjectURL(blob);
+  let header =
+`timestamp_utc,trial,block,trial_in_block,target_x,target_y,disp_target_x,disp_target_y,touch_x,touch_y,response_time_ms,error_px,prism_dx,prism_dy,time_pressure,dual_task\n`;
 
-    let a = document.createElement("a");
-    a.href = url;
-    a.download = "visuomotor_data.csv";
-    a.click();
+  let csv = header;
+
+  data.forEach(d => {
+    csv +=
+`${d.timestamp_utc},${d.trial},${d.block},${d.trial_in_block},${d.target_x},${d.target_y},${d.disp_target_x},${d.disp_target_y},${d.touch_x},${d.touch_y},${d.response_time_ms},${d.error_px},${d.prism_dx},${d.prism_dy},${d.time_pressure},${d.dual_task}\n`;
+  });
+
+  let blob = new Blob([csv], {type:"text/csv"});
+  let url = URL.createObjectURL(blob);
+
+  let a = document.createElement("a");
+  a.href = url;
+  a.download = "visuomotor_data.csv";
+  a.click();
 }
-</script>
 
+</script>
 </body>
 </html>
