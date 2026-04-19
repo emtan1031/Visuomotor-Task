@@ -1,71 +1,81 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>Visuomotor Prism Task</title>
+<!--This is the beginning of the HTML section. It is the bare bones sturcture and explains what is on the page. It just says "there's a text label and a drawing canvas on this page. -->
+<!DOCTYPE html> 
+<html> <!-- Opens the entire webpage. Everything sits inside this tag -->
+<head> <!-- Opens a section for behind the scenes info. Holds information about the page rather than the content that appears on screen (i.e. what is this page? how should it handle text? how should it look? What scripts should it load? -->
+<meta charset="UTF-8"> <!-- Tells the browser to support all characters and symbols. Without this, special characters may be displayed as gibberish -->
+<title>Visuomotor Prism Task</title> <!-- The text that appears in the browser tab at the top of the screen -->
 <style>
-body {
-  margin: 0;
-  overflow: hidden;
-  background: black;
-  font-family: Arial;
-  color: white;
-  cursor: none;
-  touch-action: none;
+body { /* Targets the entire page. Everything inside here applies to the whole page */
+  margin: 0; /* removes the default white border/gap that browsers add around the edge of every page */
+  overflow: hidden; /* hides any scrollbars. prevents the user from scrolling around */
+  background: black; /* makes the background black */
+  font-family: Arial; /* sets the font to Arial */
+  color: white; /*sets the text to be white */
+  cursor: none; /* hides the mouse cursor. So participants don't see pointer floating around during the exp */
+  touch-action: none; /* disables the browser's built in touch gestures like pinch to zoom or swipe to scroll. Important so these gestures don't interfere w the experiment. */
 }
-#info {
-  position: absolute;
+#info { /* targets the <div id="info"> part in the next section (the text label) */
+  position: absolute; /*places this element in a specific location (specified in the next section) */
   top: 10px;
   left: 10px;
-  z-index: 10;
-  pointer-events: none;
+  z-index: 10; /* text element sits on top of everything else and doesn't get hidden behind the canvas */
+  pointer-events: none; /* makes the label invisible to clicks and taps. So if a participant taps near the corner where the text is, it registers as a tap on the canvas underneath, not on the text */
   font-size: 20px;
 }
 </style>
-</head>
+</head> <!-- back to html section. closes the behind-the-scenes section. -->
 
-<body>
-<div id="info">Tap anywhere to start</div>
-<canvas id="c"></canvas>
+<body> <!-- opens the visible part of the page. Everything the user actually sees goes in here. -->
+<div id="info">Tap anywhere to start</div> <!-- A text box that shows "Tap anywhere to start" to the user. JavaScript updates this text as the experiment runs -->
+<canvas id="c"></canvas> <!-- A blank drawing surface. JavaScript draws everything on here. Without this, there would be nothing to draw on -->
 
 <script>
-const canvas = document.getElementById("c");
-const ctx = canvas.getContext("2d");
+const canvas = document.getElementById("c"); //Goes and finds the canvas element from the HTML and grabs it.
+const ctx = canvas.getContext("2d"); // Gets a drawing brush from the canvas. "ctx" is what you use to draw circles, rectanges, text, tec. "const" means it will create a variable that will never change. 
 
-canvas.width = window.innerWidth;
+canvas.width = window.innerWidth; //Makes the canvas fill the entire screen.
 canvas.height = window.innerHeight;
 
-const CX = canvas.width / 2;
+const CX = canvas.width / 2; //Calculates the exact center of the screen (used constantly thorughout the code asa ref point).
 const CY = canvas.height / 2;
 
+//Defines the experiment block where name = "what the block is called"; trials = "how many trials in the block"; prism = "how many pixels to shift the target visually". Blocks are the 4 phases of the experiment.
 const BLOCKS = [
   {name:"baseline",        trials:10, prism:[0,0]},
-  {name:"adaptation",      trials:30, prism:[80,0]},
-  {name:"adaptation_cont", trials:20, prism:[80,0]},
+  {name:"adaptation",      trials:30, prism:[0,0]},
+  {name:"adaptation_cont", trials:20, prism:[0,0]},
   {name:"aftereffect",     trials:10, prism:[0,0]}
 ];
-
+//Counters that keep track of where we are in the experiment. Which block, which overall trial, which trial within the block
 let blockIndex = 0;
 let trial = 0;
 let trial_in_block = 0;
 
+//Stores the current target's position. Start as null meaning "no target yet."
 let target = null;
+
+//Records when the current trial started so we can calculate reaction time.
 let startTime = 0;
+// An empty list that collects every trial's results. Gets bigger as the experiment runs
 let data = [];
 
+// The current visual shift being applied.
 let prism_dx = 0;
 let prism_dy = 0;
 let time_pressure = false;
 let dual_task = false;
 
+// running -- has the experiment started at all
+// trialActive is a trial currently happening and waiting for a tap 
 let running = false;
 let trialActive = false;
 
-// red dot
-let redX = CX;
+// position of the red dot and whether it's visible. Starts at the center of the screen.
+let redX = CX; 
 let redY = CY;
 let showRed = true;
 
+// The min distance a target can appear from the center. Stops targets from spawning too close to the middle (the green target will never appear closer than 180 pixels to the center of the screen)
 const MIN_DIST_FROM_CENTER = 180; // min horizontal distance from center
 
 function newTrial() {
@@ -225,5 +235,5 @@ function finish() {
 
 draw();
 </script>
-</body>
-</html>
+</body> <!-- closes the visible section. -->
+</html> <!-- closes the entire webpage --> 
