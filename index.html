@@ -11,6 +11,7 @@ body {
   font-family: Arial;
   color: white;
   cursor: none;
+  touch-action: none;
 }
 #info {
   position: absolute;
@@ -18,12 +19,13 @@ body {
   left: 10px;
   z-index: 10;
   pointer-events: none;
+  font-size: 20px;
 }
 </style>
 </head>
 
 <body>
-<div id="info">Click anywhere to start</div>
+<div id="info">Tap anywhere to start</div>
 <canvas id="c"></canvas>
 
 <script>
@@ -32,6 +34,9 @@ const ctx = canvas.getContext("2d");
 
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
+
+const CX = canvas.width / 2;
+const CY = canvas.height / 2;
 
 const BLOCKS = [
   {name:"baseline",        trials:10, prism:[0,0]},
@@ -55,87 +60,40 @@ let dual_task = false;
 
 let running = false;
 let trialActive = false;
-let isDragging = false;
 
-let redX = canvas.width / 2;
-let redY = canvas.height / 2;
+// red dot
+let redX = CX;
+let redY = CY;
+let showRed = true;
 
-const MIN_TARGET_RADIUS = 180;
-
-// ── pointer lock ──────────────────────────────────────────────────────
-// once locked, mousemove gives us raw movementX/Y with no screen-edge limit
-document.addEventListener("click", () => {
-  if (!document.pointerLockElement) {
-    canvas.requestPointerLock();
-  }
-});
-
-document.addEventListener("pointerlockchange", () => {
-  if (document.pointerLockElement === canvas) {
-    // locked — good, raw movement now flows in
-  }
-});
-
-// ── movement: pure deltas, no absolute position involved ──────────────
-document.addEventListener("mousemove", (e) => {
-  if (!isDragging) return;
-
-  redX += e.movementX;
-  redY += e.movementY;
-
-  // clamp so dot can't leave the canvas
-  redX = Math.max(0, Math.min(canvas.width,  redX));
-  redY = Math.max(0, Math.min(canvas.height, redY));
-
-  draw();
-});
-
-document.addEventListener("mousedown", (e) => {
-  if (!running) {
-    running = true;
-    document.getElementById("info").innerText = "";
-    newTrial();
-    return;
-  }
-
-  if (e.button === 0 && trialActive) {
-    isDragging = true;
-    startTime = performance.now();
-  }
-});
-
-document.addEventListener("mouseup", (e) => {
-  if (e.button === 0 && isDragging) {
-    isDragging = false;
-    if (trialActive) {
-      recordResponse(redX, redY);
-    }
-  }
-});
+const MIN_DIST_FROM_CENTER = 180; // min horizontal distance from center
 
 function newTrial() {
   const block = BLOCKS[blockIndex];
   prism_dx = block.prism[0];
   prism_dy = block.prism[1];
 
-  // red dot always resets to exact center
-  redX = canvas.width / 2;
-  redY = canvas.height / 2;
-
-  const angle = Math.random() * 2 * Math.PI;
-  const minR = MIN_TARGET_RADIUS;
-  const maxR = Math.min(canvas.width, canvas.height) * 0.38;
-  const r = minR + Math.random() * (maxR - minR);
+  // target is left or right of center, vertically centered
+  const side = Math.random() < 0.5 ? -1 : 1;
+  const minD = MIN_DIST_FROM_CENTER;
+  const maxD = (canvas.width / 2) - 80;
+  const dist = minD + Math.random() * (maxD - minD);
 
   target = {
-    x: canvas.width  / 2 + r * Math.cos(angle),
-    y: canvas.height / 2 + r * Math.sin(angle)
+    x: CX + side * dist,
+    y: CY
   };
 
+  // red dot resets to center
+  redX = CX;
+  redY = CY;
+  showRed = true;
+
   trialActive = true;
+  startTime = performance.now();
 
   document.getElementById("info").innerText =
-    `Block: ${block.name} | Trial ${trial_in_block + 1}/${block.trials}`;
+    `Block: ${block.name} | Trial ${trial_in_block + 1}/${BLOCKS[blockIndex].trials}`;
 
   draw();
 }
@@ -145,18 +103,48 @@ function draw() {
   ctx.fillStyle = "black";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+  // green target (displaced by prism)
   if (target && trialActive) {
     ctx.fillStyle = "lime";
     ctx.beginPath();
-    ctx.arc(target.x + prism_dx, target.y + prism_dy, 12, 0, Math.PI * 2);
+    ctx.arc(target.x + prism_dx, target.y + prism_dy, 18, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  ctx.fillStyle = "red";
-  ctx.beginPath();
-  ctx.arc(redX, redY, 10, 0, Math.PI * 2);
-  ctx.fill();
+  // red dot
+  if (showRed) {
+    ctx.fillStyle = "red";
+    ctx.beginPath();
+    ctx.arc(redX, redY, 14, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
+
+// ── TOUCH HANDLING ────────────────────────────────────────────────────
+
+canvas.addEventListener("touchstart", (e) => {
+  e.preventDefault();
+
+  if (!running) {
+    running = true;
+    document.getElementById("info").innerText = "";
+    newTrial();
+    return;
+  }
+}, { passive: false });
+
+canvas.addEventListener("touchend", (e) => {
+  e.preventDefault();
+
+  if (!trialActive) return;
+
+  const touch = e.changedTouches[0];
+  const rect = canvas.getBoundingClientRect();
+  const tx = touch.clientX - rect.left;
+  const ty = touch.clientY - rect.top;
+
+  recordResponse(tx, ty);
+}, { passive: false });
 
 function recordResponse(touchX, touchY) {
   trialActive = false;
@@ -183,33 +171,39 @@ function recordResponse(touchX, touchY) {
     dual_task:        dual_task ? 1 : 0
   });
 
+  // move red dot to where they tapped
+  redX = touchX;
+  redY = touchY;
   draw();
 
+  // hold red dot for 1 second, then advance
   setTimeout(() => {
-    trial++;
-    trial_in_block++;
+    showRed = false;
+    draw();
 
-    if (trial_in_block >= BLOCKS[blockIndex].trials) {
-      blockIndex++;
-      trial_in_block = 0;
-      if (blockIndex >= BLOCKS.length) {
-        finish();
-        return;
+    setTimeout(() => {
+      trial++;
+      trial_in_block++;
+
+      if (trial_in_block >= BLOCKS[blockIndex].trials) {
+        blockIndex++;
+        trial_in_block = 0;
+        if (blockIndex >= BLOCKS.length) {
+          finish();
+          return;
+        }
       }
-    }
-    newTrial();
-  }, 300);
+      newTrial();
+    }, 200); // brief blank before next trial
+  }, 1000); // red dot stays visible for 1s
 }
 
 function finish() {
-  // release pointer lock when done
-  document.exitPointerLock();
-
   ctx.fillStyle = "black";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = "white";
-  ctx.font = "28px Arial";
-  ctx.fillText("Experiment complete. Downloading data...", 60, canvas.height / 2);
+  ctx.font = "32px Arial";
+  ctx.fillText("Experiment complete. Downloading data...", 60, CY);
 
   const header = "timestamp_utc,trial,block,trial_in_block,target_x,target_y," +
     "disp_target_x,disp_target_y,touch_x,touch_y,response_time_ms,error_px," +
