@@ -1,0 +1,269 @@
+<!--This is the beginning of the HTML section. It is the bare bones sturcture and explains what is on the page. It just says "there's a text label and a drawing canvas on this page. -->
+<!DOCTYPE html> 
+<html> <!-- Opens the entire webpage. Everything sits inside this tag -->
+<head> <!-- Opens a section for behind the scenes info. Holds information about the page rather than the content that appears on screen (i.e. what is this page? how should it handle text? how should it look? What scripts should it load? -->
+<meta charset="UTF-8"> <!-- Tells the browser to support all characters and symbols. Without this, special characters may be displayed as gibberish -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"> <!-- Prevents zooming/scaling and tells the browser to use the full device width, including areas behind notches/rounded corners -->
+<meta name="apple-mobile-web-app-capable" content="yes"> <!-- Tells iOS Safari: when launched from the Home Screen icon, open as a standalone fullscreen app with no address bar or browser chrome at all -->
+<meta name="apple-mobile-web-app-status-bar-style" content="black"> <!-- Makes the top status bar area (clock/battery) blend in as black instead of white, so it matches the black background -->
+<meta name="mobile-web-app-capable" content="yes"> <!-- Same idea as above, but the newer standardized (non-Apple-specific) version of the tag -->
+<title>Visuomotor Prism Task (iPad)</title> <!-- The text that appears in the browser tab at the top of the screen -->
+<style>
+html, body { /* Targets both the html root and the body. Making both fill 100% height avoids gaps some browsers leave if only body is styled */
+  margin: 0;
+  height: 100%;
+  overflow: hidden; /* hides any scrollbars. prevents the user from scrolling around */
+}
+body { /* Targets the entire page. Everything inside here applies to the whole page */
+  background: black; /* makes the background black */
+  font-family: Arial; /* sets the font to Arial */
+  color: white; /*sets the text to be white */
+  cursor: none; /* hides the mouse cursor. So participants don't see pointer floating around during the exp */
+  touch-action: none; /* disables the browser's built in touch gestures like pinch to zoom or swipe to scroll. Important so these gestures don't interfere w the experiment. */
+}
+#info { /* targets the <div id="info"> part in the next section (the text label) */
+  position: absolute; /*places this element in a specific location (specified in the next section) */
+  top: 10px;
+  left: 10px;
+  z-index: 10; /* text element sits on top of everything else and doesn't get hidden behind the canvas */
+  pointer-events: none; /* makes the label invisible to clicks and taps. So if a participant taps near the corner where the text is, it registers as a tap on the canvas underneath, not on the text */
+  font-size: 20px;
+}
+</style>
+</head> <!-- back to html section. closes the behind-the-scenes section. -->
+
+<body> <!-- opens the visible part of the page. Everything the user actually sees goes in here. -->
+<div id="info">Tap anywhere to start</div> <!-- A text box that shows "Tap anywhere to start" to the user. JavaScript updates this text as the experiment runs -->
+<canvas id="c"></canvas> <!-- A blank drawing surface. JavaScript draws everything on here. Without this, there would be nothing to draw on -->
+
+<script>
+const canvas = document.getElementById("c"); //Goes and finds the canvas element from the HTML and grabs it.
+const ctx = canvas.getContext("2d"); // Gets a drawing brush from the canvas. "ctx" is what you use to draw circles, rectanges, text, tec. "const" means it will create a variable that will never change. 
+
+canvas.width = window.innerWidth; //Makes the canvas fill the entire screen.
+canvas.height = window.innerHeight;
+
+let CX = canvas.width / 2; //Calculates the exact center of the screen (used constantly thorughout the code asa ref point).
+let CY = canvas.height / 2;
+
+// Resizes the canvas to fill whatever the current screen size is (used on load, on rotation, and after entering/exiting fullscreen)
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  CX = canvas.width / 2;
+  CY = canvas.height / 2;
+  draw();
+}
+window.addEventListener("resize", resizeCanvas);
+
+//Defines the experiment block where name = "what the block is called"; trials = "how many trials in the block"; prism = "how many pixels to shift the target visually". Blocks are the 4 phases of the experiment.
+const BLOCKS = [
+  {name:"baseline",        trials:10, prism:[0,0]},
+  {name:"adaptation",      trials:30, prism:[0,0]},
+  {name:"adaptation_cont", trials:20, prism:[0,0]},
+  {name:"aftereffect",     trials:10, prism:[0,0]}
+];
+//Counters that keep track of where we are in the experiment. Which block, which overall trial, which trial within the block
+let blockIndex = 0;
+let trial = 0;
+let trial_in_block = 0;
+
+//Stores the current target's position. Start as null meaning "no target yet."
+let target = null;
+
+//Records when the current trial started so we can calculate reaction time.
+let startTime = 0;
+// An empty list that collects every trial's results. Gets bigger as the experiment runs
+let data = [];
+
+// The current visual shift being applied.
+let prism_dx = 0;
+let prism_dy = 0;
+let time_pressure = false;
+let dual_task = false;
+
+// running -- has the experiment started at all
+// trialActive is a trial currently happening and waiting for a tap 
+let running = false;
+let trialActive = false;
+
+// position of the red dot and whether it's visible. Starts at the center of the screen.
+let redX = CX; 
+let redY = CY;
+let showRed = true;
+
+// The min distance a target can appear from the center. Stops targets from spawning too close to the middle (the green target will never appear closer than 180 pixels to the center of the screen)
+const MIN_DIST_FROM_CENTER = 180; // min horizontal distance from center
+
+function newTrial() {
+  const block = BLOCKS[blockIndex];
+  prism_dx = block.prism[0];
+  prism_dy = block.prism[1];
+
+  // target is left or right of center, vertically centered
+  const side = Math.random() < 0.5 ? -1 : 1;
+  const minD = MIN_DIST_FROM_CENTER;
+  const maxD = (canvas.width / 2) - 80;
+  const dist = minD + Math.random() * (maxD - minD);
+
+  target = {
+    x: CX + side * dist,
+    y: CY
+  };
+
+  // red dot resets to center
+  redX = CX;
+  redY = CY;
+  showRed = true;
+
+  trialActive = true;
+  startTime = performance.now();
+
+  document.getElementById("info").innerText =
+    `Block: ${block.name} | Trial ${trial_in_block + 1}/${BLOCKS[blockIndex].trials}`;
+
+  draw();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "black";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // green target (displaced by prism)
+  if (target && trialActive) {
+    ctx.fillStyle = "lime";
+    ctx.beginPath();
+    ctx.arc(target.x + prism_dx, target.y + prism_dy, 18, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // red dot
+  if (showRed) {
+    ctx.fillStyle = "red";
+    ctx.beginPath();
+    ctx.arc(redX, redY, 14, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// ── TOUCH HANDLING ────────────────────────────────────────────────────
+
+canvas.addEventListener("touchstart", (e) => {
+  e.preventDefault();
+
+  if (!running) {
+    // Request fullscreen — this must happen inside a user gesture (the tap)
+    // or the browser will silently block it. Covers standard + older webkit/MS prefixes.
+    const el = document.documentElement;
+    if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    else if (el.msRequestFullscreen) el.msRequestFullscreen();
+
+    running = true;
+    document.getElementById("info").innerText = "";
+
+    // give the browser a moment to finish the fullscreen transition
+    // before resizing the canvas and starting the first trial
+    setTimeout(() => {
+      resizeCanvas();
+      newTrial();
+    }, 150);
+    return;
+  }
+}, { passive: false });
+
+canvas.addEventListener("touchend", (e) => {
+  e.preventDefault();
+
+  if (!trialActive) return;
+
+  const touch = e.changedTouches[0];
+  const rect = canvas.getBoundingClientRect();
+  const tx = touch.clientX - rect.left;
+  const ty = touch.clientY - rect.top;
+
+  recordResponse(tx, ty);
+}, { passive: false });
+
+function recordResponse(touchX, touchY) {
+  trialActive = false;
+
+  const rt = performance.now() - startTime;
+  const error = Math.sqrt((touchX - target.x) ** 2 + (touchY - target.y) ** 2);
+
+  data.push({
+    timestamp_utc:    new Date().toISOString(),
+    trial:            trial,
+    block:            BLOCKS[blockIndex].name,
+    trial_in_block:   trial_in_block,
+    target_x:         Math.round(target.x),
+    target_y:         Math.round(target.y),
+    disp_target_x:    Math.round(target.x + prism_dx),
+    disp_target_y:    Math.round(target.y + prism_dy),
+    touch_x:          Math.round(touchX),
+    touch_y:          Math.round(touchY),
+    response_time_ms: Math.round(rt),
+    error_px:         Math.round(error),
+    prism_dx:         prism_dx,
+    prism_dy:         prism_dy,
+    time_pressure:    time_pressure ? 1 : 0,
+    dual_task:        dual_task ? 1 : 0
+  });
+
+  // move red dot to where they tapped
+  redX = touchX;
+  redY = touchY;
+  draw();
+
+  // hold red dot for 1 second, then advance
+  setTimeout(() => {
+    showRed = false;
+    draw();
+
+    setTimeout(() => {
+      trial++;
+      trial_in_block++;
+
+      if (trial_in_block >= BLOCKS[blockIndex].trials) {
+        blockIndex++;
+        trial_in_block = 0;
+        if (blockIndex >= BLOCKS.length) {
+          finish();
+          return;
+        }
+      }
+      newTrial();
+    }, 200); // brief blank before next trial
+  }, 1000); // red dot stays visible for 1s
+}
+
+function finish() {
+  ctx.fillStyle = "black";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "white";
+  ctx.font = "32px Arial";
+  ctx.fillText("Experiment complete. Downloading data...", 60, CY);
+
+  const header = "timestamp_utc,trial,block,trial_in_block,target_x,target_y," +
+    "disp_target_x,disp_target_y,touch_x,touch_y,response_time_ms,error_px," +
+    "prism_dx,prism_dy,time_pressure,dual_task\n";
+
+  const rows = data.map(d =>
+    `${d.timestamp_utc},${d.trial},${d.block},${d.trial_in_block},` +
+    `${d.target_x},${d.target_y},${d.disp_target_x},${d.disp_target_y},` +
+    `${d.touch_x},${d.touch_y},${d.response_time_ms},${d.error_px},` +
+    `${d.prism_dx},${d.prism_dy},${d.time_pressure},${d.dual_task}`
+  ).join("\n");
+
+  const blob = new Blob([header + rows], {type: "text/csv"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "visuomotor_data.csv";
+  a.click();
+}
+
+draw();
+</script>
+</body> <!-- closes the visible section. -->
+</html> <!-- closes the entire webpage -->
