@@ -269,7 +269,7 @@ function finish() {
   const blob = new Blob([header + rows], {type: "text/csv"});
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `subject${sequenceState.subject}_${sequenceState.condition}_${getDateStamp()}.csv`;
+  a.download = `Prism Project/subject${sequenceState.subject}_${sequenceState.condition}_${getDateStamp()}.csv`;
   a.click();
   advanceSequenceState(sequenceState);
 }
