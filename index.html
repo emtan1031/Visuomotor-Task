@@ -58,8 +58,7 @@ document.addEventListener("fullscreenchange", resizeCanvas);
 
 const BLOCKS = [
   {name:"baseline",        trials:10, prism:[0,0]},
-  {name:"adaptation",      trials:30, prism:[0,0]},
-  {name:"adaptation_cont", trials:20, prism:[0,0]},
+  {name:"adaptation",      trials:50, prism:[0,0]},
   {name:"aftereffect",     trials:10, prism:[0,0]}
 ];
 let blockIndex = 0;
@@ -81,6 +80,33 @@ let trialActive = false;
 let redX = CX;
 let redY = CY;
 let showRed = true;
+
+// ── SUBJECT / CONDITION SEQUENCING ──────────────────────────────────
+function getSequenceState() {
+  const stored = localStorage.getItem("prism_sequence_state");
+  if (stored) return JSON.parse(stored);
+  return { subject: 1, condition: "unstressed" };
+}
+
+function advanceSequenceState(current) {
+  let next;
+  if (current.condition === "unstressed") {
+    next = { subject: current.subject, condition: "stressed" };
+  } else {
+    next = { subject: current.subject + 1, condition: "unstressed" };
+  }
+  localStorage.setItem("prism_sequence_state", JSON.stringify(next));
+}
+
+function getDateStamp() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+const sequenceState = getSequenceState();
 
 const MIN_DIST_FROM_CENTER = 180;
 
@@ -193,10 +219,8 @@ function recordResponse(touchX, touchY) {
     touch_y:          Math.round(touchY),
     response_time_ms: Math.round(rt),
     error_px:         Math.round(error),
-    prism_dx:         prism_dx,
-    prism_dy:         prism_dy,
-    time_pressure:    time_pressure ? 1 : 0,
-    dual_task:        dual_task ? 1 : 0
+    subject_id:       sequenceState.subject,
+    condition:        sequenceState.condition
   });
 
   redX = touchX;
@@ -233,21 +257,24 @@ function finish() {
 
   const header = "timestamp_utc,trial,block,trial_in_block,target_x,target_y," +
     "disp_target_x,disp_target_y,touch_x,touch_y,response_time_ms,error_px," +
-    "prism_dx,prism_dy,time_pressure,dual_task\n";
+    "subject_id,condition\n";
 
   const rows = data.map(d =>
     `${d.timestamp_utc},${d.trial},${d.block},${d.trial_in_block},` +
     `${d.target_x},${d.target_y},${d.disp_target_x},${d.disp_target_y},` +
     `${d.touch_x},${d.touch_y},${d.response_time_ms},${d.error_px},` +
-    `${d.prism_dx},${d.prism_dy},${d.time_pressure},${d.dual_task}`
+    `${d.subject_id},${d.condition}`
   ).join("\n");
 
   const blob = new Blob([header + rows], {type: "text/csv"});
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "visuomotor_data.csv";
+  a.download = `subject${sequenceState.subject}_${sequenceState.condition}_${getDateStamp()}.csv`;
   a.click();
+  advanceSequenceState(sequenceState);
 }
+document.getElementById("info").innerText =
+  `Subject ${sequenceState.subject} — ${sequenceState.condition} — Tap anywhere to start`;
 
 draw();
 </script>
